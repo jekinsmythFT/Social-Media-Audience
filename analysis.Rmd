@@ -39,14 +39,17 @@ ds <- export %>%
                                 "To find stories on a specific topic the FT covers" = "Specific topics",
                                 "To find stories relevant to my work / professional development" = "Professional development",
                                 "To find material I might be inspired to read" = "Inspiring material",
-                                "Other (please specify)" = "Other"))
+                                "Other (please specify)" = "Other"),
+         hold_sub = recode(hold_sub,
+                           "I signed up for a trial offer in the past, but did not continue" = "Lapsed trialist",
+                           "I used to have an FT subscription, but have since cancelled" = "Former sub",
+                           "I'm currently an FT subscriber" = "Current sub")) 
 ```
 
 
 #Which social media source do we have the most responses from?
 
 ```{r}
-library(psych)
 ds %>% 
   count(social_from, sort = T) %>% 
   mutate(prop = n / sum(n)) %>% 
@@ -59,6 +62,45 @@ ds %>%
   theme_void() +
   theme(legend.position = "none")
 ```
+
+# Have you ever held an FT subscription?
+
+```{r}
+ds %>% 
+  select(hold_sub) %>% 
+  count(hold_sub) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ggplot(aes(hold_sub, prop)) +
+  geom_col()
+
+
+ds %>% 
+  select(hold_sub, social_follow) %>% 
+  mutate(person = row_number(),
+         social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(person) %>%
+  pivot_wider(names_from = 2,
+              values_from = 2) %>% 
+  ungroup() %>% 
+  mutate_at(3:9,
+             ~if_else(is.na(.x), 0, 1)) %>% 
+  select(1, 3:7) %>% 
+  group_by(hold_sub) %>% 
+  summarise_at(2:6,
+               ~sum, na.rm = T)
+
+
+  group_by(hold_sub)
+  drop_na() %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ggplot(aes(hold_sub, prop)) +
+  geom_col()
+```
+
+
+
 # Which social media channels do users follow us on?
 
 ```{r}
@@ -327,12 +369,10 @@ ds %>%
               values_from = prop) %>% 
   drop_na() %>% 
   ungroup() %>% 
-  select(!1) %>% 
+  select(2:8) %>% 
   cor() %>% 
   dist() %>% 
   hclust() %>% 
   plot()
 
 ```
-
-
