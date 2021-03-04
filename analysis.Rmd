@@ -1,0 +1,338 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+library(readr)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+
+export <- read_csv("export.csv")
+
+
+ds <- export %>% 
+  mutate(date = as.Date(.$`Recorded Date`, format = "%d/%m/%y"),
+         social_from = Social,
+         social_follow = .$`Where do you follow the FT on social media?`,
+         follow_reason = .$`What is your main reason for following the FT on social media? - Selected Choice`,
+         follow_reason_alt = .$`What is your main reason for following the FT on social media? - Other (please specify) - Text`,
+         content_associate = .$`Which of the following content do you associate with the FT? (Select any that apply) - Selected Choice`,
+         content_associate_alt = .$`Which of the following content do you associate with the FT? (Select any that apply) - Other (please specify) - Text`,
+         content_interested = .$`Which of the following content are you most interested in personally? - Selected Choice`,
+         content_interested_alt = .$`Which of the following content are you most interested in personally? - Other (please specify) - Text`,
+         three_words = .$`How would you describe the FT in three words?`,
+         hold_sub = .$`Have you ever held an FT subscription?`,
+         further_research = .$`We would like to invite you to take part in further research with the FT. If you would be interested in participating please indicate below.`,
+         country = country) %>% 
+  select(date, social_from, social_follow, follow_reason, follow_reason_alt, content_associate,
+         content_associate_alt, content_interested, content_interested_alt, three_words,
+         hold_sub, country) %>% 
+  mutate(follow_reason = recode(follow_reason, 
+                                "To keep up with the latest headlines" = "Latest headlines",
+                                "To read the FT's take on the news" = "FT's take",
+                                "To connect or converse with the FT community" = "FT community",
+                                "To find stories on a specific topic the FT covers" = "Specific topics",
+                                "To find stories relevant to my work / professional development" = "Professional development",
+                                "To find material I might be inspired to read" = "Inspiring material",
+                                "Other (please specify)" = "Other"))
+```
+
+
+#Which social media source do we have the most responses from?
+
+```{r}
+library(psych)
+ds %>% 
+  count(social_from, sort = T) %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ggplot(aes(ymax=cumsum(prop), ymin= c(0, head(cumsum(prop), n = -1)), xmax=4, xmin=3, fill = social_from, - prop)) +
+  geom_rect(col = "black") +
+  scale_fill_manual(values = cbPalette[2:5]) +
+  coord_polar(theta="y", start = 0) +
+  xlim(c(2, 4)) +
+  geom_text(x = 2.7, aes(y=cumsum(prop) - 0.5 * prop, label = percent(prop,1), size = 4)) +
+  theme_void() +
+  theme(legend.position = "none")
+```
+# Which social media channels do users follow us on?
+
+```{r}
+ds %>% 
+  select(social_follow) %>% 
+  mutate(person = row_number(),
+    social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  count(social_follow)
+
+```
+
+
+
+
+
+
+
+# Do people follow on one or multiple channels?
+
+```{r}
+
+ds %>% 
+  select(social_follow) %>% 
+  mutate(person = row_number(),
+    social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(person) %>%
+  pivot_wider(names_from = 1,
+              values_from = 1) %>% 
+  ungroup() %>% 
+  mutate_if(~!is.integer(.x),
+             ~if_else(is.na(.x), 0, 1)) %>% 
+  select(1:6, 8) %>% 
+  group_by(person) %>% 
+  mutate(total_socials = sum(Facebook, LinkedIn, Instagram, Twitter, YouTube, Telegram)) %>% 
+  ungroup() %>% 
+  summarise(mean(total_socials),
+            median(total_socials))
+  
+```
+
+
+
+
+
+
+# Overlap of Audiences
+
+```{r}
+library(reshape2)
+
+exclusive_follows <- ds %>% 
+  select(social_follow) %>% 
+  mutate(person = row_number(),
+    social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(person) %>%
+  pivot_wider(names_from = 1,
+              values_from = 1) %>% 
+  ungroup() %>% 
+  mutate_if(~!is.integer(.x),
+             ~if_else(is.na(.x), 0, 1)) %>% 
+  select(1:6) %>%
+  ungroup() %>% 
+  group_by(person) %>% 
+  mutate(total_socials = sum(Facebook, LinkedIn, Instagram, Twitter, YouTube)) %>% 
+  filter(total_socials ==1) %>% 
+  pivot_longer(2:6) %>% 
+  filter(value == 1) %>% 
+  group_by(name) %>% 
+  summarise(value = sum(value)) %>% 
+  mutate(total_value = c(158, 370, 153, 283, 53)) %>% 
+  mutate(prop = value / total_value) %>% 
+  mutate(Var1 = name,
+         Var2 = "Exclusively to one\n platform", 
+         value = round(prop, 2) * 100) %>% 
+  select(Var1, Var2, value)
+
+social_array <- ds %>% 
+  select(social_follow) %>% 
+  mutate(person = row_number(),
+    social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(person) %>%
+  pivot_wider(names_from = 1,
+              values_from = 1) %>% 
+  ungroup() %>% 
+  mutate_if(~!is.integer(.x),
+             ~if_else(is.na(.x), 0, 1)) %>% 
+  select(2:6) %>% 
+  as.matrix() %>% 
+  crossprod() 
+
+floor(social_array * 100 / diag(social_array)) 
+
+floor(social_array * 100 / diag(social_array)) %>% 
+  melt() %>% 
+  mutate(Var1 = factor(Var1, levels = c("YouTube", "LinkedIn", "Facebook",
+                                        "Instagram", "Twitter")),
+         Var2 = factor(Var2, levels = c("YouTube", "LinkedIn", "Facebook",
+                                        "Instagram", "Twitter"))) %>% 
+  mutate(Var2 = paste0("Also follow us on\n", Var2)) %>% 
+  full_join(exclusive_follows) %>% 
+{  ggplot(., aes(Var2, Var1, fill = Var1, label = paste0(value, "%"))) +
+    geom_tile(show.legend = F) +
+    geom_text(data = subset(., value !=100), col = "white",
+              aes(size = value),
+              show.legend = F) +
+    scale_size_continuous(range = c(3,6)) +
+    scale_y_discrete(limits = c("YouTube", "LinkedIn", "Facebook", "Instagram",
+                                "Twitter")) +
+    scale_x_discrete(position = "top", limits = c("Exclusively to one\n platform",
+                                                  "Also follow us on\nTwitter",
+                                                  "Also follow us on\nInstagram", 
+                                                  "Also follow us on\nFacebook", 
+                                                  "Also follow us on\nLinkedIn",
+                                                  "Also follow us on\nYouTube" )) +
+    scale_fill_manual(breaks = c("YouTube", "Twitter", "LinkedIn",
+                                 "Instagram", "Facebook"),
+                      values = c("#D55E00", "#56B4E9", "#009E73",
+                                 "#CC79A7", "#0072B2")) +
+    labs(x = "",
+         y = "Social Media Platform",
+         subtitle = "Examining the platform crossover from our social media following",
+         title = "Followers on Twitter & Instagram tend to stick to one platform") +
+    theme_minimal()
+}
+
+
+```
+
+# What is your main reason for following the FT on social media?
+
+```{r, fig.width=10}
+ds %>% 
+  select(social_follow, follow_reason) %>% 
+  mutate(social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  filter(!social_follow %in% c("I don't follow the FT on any social channels", "Telegram")) %>% 
+  group_by(social_follow, follow_reason) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n),
+         alpha = if_else(follow_reason == "Latest headlines", 1, 0)) %>% 
+{  ggplot(., aes(social_follow, prop, fill = reorder(follow_reason, - prop),
+                 label = percent(prop,1 ),
+                 alpha  = alpha)) +
+    geom_col(show.legend = T) +
+    scale_fill_manual(values = cbPalette[2:8]) +
+    scale_alpha(range = c(.4,1)) +
+    geom_text(data = subset(., alpha == 1),
+              vjust = 1, aes(y = .8)) +
+    scale_y_continuous(labels = percent_format()) +
+    guides(alpha = F) +
+    labs(fill = "Primary follow reason",
+         x = "Social Media",
+         y = "Percentage of followers",
+         title = "Keeping up with the latest headlines is the most stated reason for following",
+         subtitle = "What is your main reason for following the FT on social media?") +
+    theme_minimal()
+}
+
+
+
+ds %>% 
+  select(social_follow, follow_reason) %>% 
+  mutate(social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  filter(!social_follow %in% c("I don't follow the FT on any social channels", "Telegram")) %>% 
+  group_by(social_follow, follow_reason) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n),
+         alpha = if_else(follow_reason == "FT's take", 1, 0)) %>% 
+{  ggplot(., aes(social_follow, prop, fill = reorder(follow_reason, - prop),
+                 label = percent(prop,1 ),
+                 alpha  = alpha)) +
+    geom_col(show.legend = T) +
+    scale_fill_manual(values = cbPalette[2:8]) +
+    scale_alpha(range = c(.4,1)) +
+    geom_text(data = subset(., alpha == 1),
+              vjust = 1, aes(y = .58)) +
+    scale_y_continuous(labels = percent_format()) +
+    guides(alpha = F) +
+    labs(fill = "Primary follow reason",
+         x = "Social Media",
+         y = "Percentage of followers",
+         title = "Facebook users are comparatively more interested in the FT's take",
+         subtitle = "What is your main reason for following the FT on social media?") +
+    theme_minimal()
+}
+
+
+
+ds %>% 
+  select(social_follow, follow_reason) %>% 
+  mutate(social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  filter(!social_follow %in% c("I don't follow the FT on any social channels", "Telegram")) %>% 
+  group_by(social_follow, follow_reason) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n),
+         alpha = if_else(follow_reason == "Inspiring material", 1, 0)) %>% 
+{  ggplot(., aes(social_follow, prop, fill = reorder(follow_reason, - prop),
+                 label = percent(prop,1 ),
+                 alpha  = alpha)) +
+    geom_col(show.legend = T) +
+    scale_fill_manual(values = cbPalette[2:8]) +
+    scale_alpha(range = c(.4,1)) +
+    geom_text(data = subset(., alpha == 1),
+              vjust = 1, aes(y = .36)) +
+    scale_y_continuous(labels = percent_format()) +
+    guides(alpha = F) +
+    labs(fill = "Primary follow reason",
+         x = "Social Media",
+         y = "Percentage of followers",
+         title = "YouTube users are more interested in finding inspiring material",
+         subtitle = "What is your main reason for following the FT on social media?") +
+    theme_minimal()
+}
+
+ds %>% 
+  select(social_follow, follow_reason) %>% 
+  mutate(social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  filter(!social_follow %in% c("I don't follow the FT on any social channels", "Telegram")) %>% 
+  group_by(social_follow, follow_reason) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n),
+         alpha = if_else(follow_reason == "Professional development", 1, 0)) %>% 
+{  ggplot(., aes(social_follow, prop, fill = reorder(follow_reason, - prop),
+                 label = percent(prop,1 ),
+                 alpha  = alpha)) +
+    geom_col(show.legend = T) +
+    scale_fill_manual(values = cbPalette[2:8]) +
+    scale_alpha(range = c(.4,1)) +
+    geom_text(data = subset(., alpha == 1),
+              vjust = 1, aes(y = .18)) +
+    scale_y_continuous(labels = percent_format()) +
+    guides(alpha = F) +
+    labs(fill = "Primary follow reason",
+         x = "Social Media",
+         y = "Percentage of followers",
+         title = "LinkedIn users are more likely to follow us to aid in their work & professional development",
+         subtitle = "What is your main reason for following the FT on social media?") +
+    theme_minimal()
+}
+```
+
+
+```{r}
+
+ds %>% 
+  select(social_follow, follow_reason) %>% 
+  mutate(social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(social_follow, follow_reason) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  mutate(prop = n / sum(n)) %>% 
+  select(1,2,4) %>% 
+  pivot_wider(names_from = follow_reason,
+              values_from = prop) %>% 
+  drop_na() %>% 
+  ungroup() %>% 
+  select(!1) %>% 
+  cor() %>% 
+  dist() %>% 
+  hclust() %>% 
+  plot()
+
+```
+
+
