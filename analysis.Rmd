@@ -42,8 +42,9 @@ ds <- export %>%
                                 "Other (please specify)" = "Other"),
          hold_sub = recode(hold_sub,
                            "I signed up for a trial offer in the past, but did not continue" = "Lapsed trialist",
-                           "I used to have an FT subscription, but have since cancelled" = "Former sub",
-                           "I'm currently an FT subscriber" = "Current sub")) 
+                           "I used to have an FT subscription, but have since cancelled" = "Former subscriber",
+                           "I'm currently an FT subscriber" = "Current subscriber",
+                           "No" = "Never subscribed")) 
 ```
 
 
@@ -71,9 +72,72 @@ ds %>%
   count(hold_sub) %>% 
   drop_na() %>% 
   mutate(prop = n / sum(n)) %>% 
-  ggplot(aes(hold_sub, prop)) +
-  geom_col()
+  ggplot(aes(reorder(hold_sub, + prop), prop, fill = hold_sub, label = percent(prop, 1))) +
+  geom_col(show.legend = F) +
+  geom_text(hjust = 1) +
+  scale_y_continuous(labels = percent_format(1)) +
+  coord_flip() +  
+  scale_fill_manual(values = cbPalette[2:5],
+                    breaks = c("Former subscriber", "Lapsed trialist", "Current subscriber",
+                                  "Non-subscriber")) +
+  labs(x = "Subscription type",
+       y = "Percentage of Respondents",
+       subtitle = "Have you ever held an FT subscription?",
+       title = "Non-subscribers made up only 43% of social media followers\nwho engaged with this survey") +
+  theme_minimal()
+```
 
+# Do different platforms have differing proportions of subs - non subs?
+
+```{r, fig.width=10}
+ds %>% 
+  select(hold_sub, social_follow) %>% 
+  mutate(person = row_number(),
+         social_follow = str_split(social_follow, ",")) %>% 
+  unnest(cols = c(social_follow)) %>% 
+  group_by(person) %>%
+  pivot_wider(names_from = 2,
+              values_from = 2) %>% 
+  ungroup() %>% 
+  mutate_at(3:9,
+             ~if_else(is.na(.x), 0, 1)) %>% 
+  select(1, 3:7) %>% 
+  group_by(hold_sub) %>% 
+  summarise_at(1:5,
+               ~sum(.), na.rm = T) %>% 
+  drop_na() %>% 
+  pivot_longer(2:6) %>% 
+  group_by(name) %>% 
+  mutate(prop = value / sum(value),
+         alpha = if_else(hold_sub == "Never subscribed", 1, 0)) %>% 
+{  ggplot(., aes(factor(name, levels = rev(c("Instagram", "Facebook", "YouTube",
+                                             "Twitter", "LinkedIn"))), prop, 
+                 fill = factor(hold_sub, levels = c("Lapsed trialist",
+                                                    "Former subscriber",
+                                                    "Current subscriber",
+                                                    "Never subscribed")),
+                 alpha = alpha, label = percent(prop, 1))) +
+    geom_col() +
+    geom_text(data = subset(., alpha == 1), position = position_stack(), hjust = 1,
+              aes(y = .2)) +
+    scale_fill_manual(values = cbPalette[2:5],
+                      breaks = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed"),
+                      labels = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed"))  +
+    scale_alpha(range = c(.4,1)) +
+    scale_y_continuous(labels = percent_format(1)) +
+    coord_flip() +
+    guides(alpha = F,
+           fill = guide_legend(reverse = T, label.position = "bottom")) +
+    labs(fill = "Subscriber type",
+         y = "Percentage of Respondents", 
+         x = "Social media followers",
+         subtitle = "Susbcriber types of our followers from different social media platforms",
+         title = "Non-subscribers are more likely to follow us on Instagram & Facebook") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+}
 
 ds %>% 
   select(hold_sub, social_follow) %>% 
@@ -88,28 +152,56 @@ ds %>%
              ~if_else(is.na(.x), 0, 1)) %>% 
   select(1, 3:7) %>% 
   group_by(hold_sub) %>% 
-  summarise_at(2:6,
-               ~sum, na.rm = T)
-
-
-  group_by(hold_sub)
+  summarise_at(1:5,
+               ~sum(.), na.rm = T) %>% 
   drop_na() %>% 
-  mutate(prop = n / sum(n)) %>% 
-  ggplot(aes(hold_sub, prop)) +
-  geom_col()
+  pivot_longer(2:6) %>% 
+  group_by(name) %>% 
+  mutate(prop = value / sum(value),
+         alpha = if_else(hold_sub == "Current subscriber", 1, 0)) %>% 
+{  ggplot(., aes(factor(name, levels = rev(c("Instagram", "Facebook", "YouTube",
+                                             "Twitter", "LinkedIn"))), prop, 
+                 fill = factor(hold_sub, levels = c("Lapsed trialist",
+                                                    "Former subscriber",
+                                                    "Current subscriber",
+                                                    "Never subscribed")),
+                 alpha = alpha, label = percent(prop, 1))) +
+    geom_col() +
+    geom_text(data = subset(., alpha == 1), position = position_stack(), hjust = 1,
+              aes(y = .6)) +
+    scale_fill_manual(values = cbPalette[2:5],
+                      breaks = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed"),
+                      labels = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed")) +
+    scale_alpha(range = c(.4,1)) +
+    scale_y_continuous(labels = percent_format(1)) +
+    coord_flip() +
+    guides(alpha = F,
+           fill = guide_legend(reverse = T, label.position = "bottom")) +
+    labs(fill = "Subscriber type",
+         y = "Percentage of Respondents", 
+         x = "Social media followers",
+         subtitle = "Susbcriber types of our followers from different social media platforms",
+         title = "Current subscribers are more likely to follow us on Twitter, YouTube, & LinkedIn") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+  }
+
+
 ```
-
-
 
 # Which social media channels do users follow us on?
 
 ```{r}
-ds %>% 
+social_media_follows <- ds %>% 
   select(social_follow) %>% 
   mutate(person = row_number(),
     social_follow = str_split(social_follow, ",")) %>% 
   unnest(cols = c(social_follow)) %>% 
-  count(social_follow)
+  count(social_follow) %>% 
+  drop_na()#%>% 
+  #filter(social_follow %in% c("Facebook", "Instagram", "LinkedIn", "YouTube"))
 
 ```
 
@@ -376,3 +468,60 @@ ds %>%
   plot()
 
 ```
+
+# What content is associated with the FT?
+
+```{r}
+ds %>% 
+  select(content_associate) %>% 
+  drop_na() %>% 
+  mutate(person = row_number(),
+         content_associate = str_split(content_associate, ",")) %>% 
+  unnest(cols = c(content_associate)) %>% 
+  group_by(content_associate) %>% 
+  summarise(n = n()) %>%
+  arrange(-n) %>% 
+  mutate(prop = n / 654)
+
+```
+
+
+# Do followers from different social platforms associate the FT with different content? 
+
+```{r,fig.width=10}
+ds %>% 
+  select(social_follow, content_associate) %>% 
+    mutate(person = row_number(),
+      social_follow = str_split(social_follow, ","),
+      content_associate = str_split(content_associate, ",")) %>% 
+  unnest(cols = social_follow) %>% 
+  unnest(cols = content_associate) %>% 
+  group_by(content_associate, social_follow) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  ungroup() %>% 
+  left_join(social_media_follows, by = c("social_follow")) %>% 
+  mutate(prop = n.x / n.y,
+         alpha = if_else(content_associate %in% c("Finance & Markets",
+                                                         "Companies",
+                                                         "World news",
+                                                         "Politics"), 1, 0),
+         label = if_else(social_follow == "YouTube", 
+                         paste0(content_associate, '\n', percent(prop, 1)),
+                         percent(prop, 1))) %>% 
+  filter(social_follow %in% c("Facebook", "Instagram", "LinkedIn", "YouTube")) %>% 
+{  ggplot(., aes(social_follow, prop, col = reorder(content_associate, + prop),
+              alpha = alpha)) +
+      geom_text_repel(data = subset(., alpha ==1), aes(label = label, col = content_associate),
+                      show.legend = F) +
+    coord_flip() +
+    geom_point(show.legend = F) +
+    guides(alpha = F) 
+  }
+  
+
+
+```
+
+
+
