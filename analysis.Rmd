@@ -481,7 +481,22 @@ ds %>%
   group_by(content_associate) %>% 
   summarise(n = n()) %>%
   arrange(-n) %>% 
-  mutate(prop = n / 654)
+  mutate(prop = n / 654, 
+         content_associate = factor(content_associate),
+         is_high = if_else(prop >= .5, 1, 0)) %>% 
+  ggplot(aes(x = reorder(content_associate, + prop), y = prop)) + 
+  geom_segment(aes(x =reorder(content_associate, + prop), xend = reorder(content_associate, + prop), yend = prop, y = 0 )) +
+  geom_point(size = 4, aes(col = factor(is_high)), show.legend = F) +
+  scale_color_manual(values = c("#F0E442", "#009E73")) +
+  geom_text(aes(label = percent(prop, 1)), vjust = 1.5) +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  scale_x_discrete(expand = c(.1,.1)) +
+  labs(title = "\nSocial media followers most associate us with Finance & Markets",
+       subtitle = "\nWhich of the following content do you associate with the FT? (Select any that apply)\n",
+       y = "\nPercentage of Followers",
+       x = "Content Areas") +
+  theme_minimal()
 
 ```
 
@@ -516,10 +531,15 @@ ds %>%
                       show.legend = F) +
     coord_flip() +
     geom_point(show.legend = F) +
-    guides(alpha = F) 
+    guides(alpha = F) +
+    scale_y_continuous(labels = percent_format()) +
+    labs(y = "\nPercentage of followers",
+         x = "Social Media Platforms",
+         subtitle = "\nSocial media platforms by what content followers associate the FT with\n",
+         title = "\nThere is only marginal differences in which content followers from different social media platforms associate us with")+
+    theme_minimal()
   }
   
-
 
 ```
 
