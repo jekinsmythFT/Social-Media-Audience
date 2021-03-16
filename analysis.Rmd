@@ -60,6 +60,9 @@ ds %>%
   coord_polar(theta="y", start = 0) +
   xlim(c(2, 4)) +
   geom_text(x = 2.7, aes(y=cumsum(prop) - 0.5 * prop, label = percent(prop,1), size = 4)) +
+  geom_text(x = 3.5, aes(y=cumsum(prop) - 0.5 * prop, label = social_from, size = 4)) +
+  labs(title = "The majority of our response came from Instagram & Twitter",
+    subtitle = "Where our responses came from") +
   theme_void() +
   theme(legend.position = "none")
 ```
@@ -79,11 +82,11 @@ ds %>%
   coord_flip() +  
   scale_fill_manual(values = cbPalette[2:5],
                     breaks = c("Former subscriber", "Lapsed trialist", "Current subscriber",
-                                  "Non-subscriber")) +
+                                  "Never subscribed")) +
   labs(x = "Subscription type",
        y = "Percentage of Respondents",
        subtitle = "Have you ever held an FT subscription?",
-       title = "Non-subscribers made up only 43% of social media followers\nwho engaged with this survey") +
+       title = "Never-subscribed made up only 43% of social media followers\nwho engaged with this survey") +
   theme_minimal()
 ```
 
@@ -542,6 +545,124 @@ ds %>%
   
 
 ```
+
+
+#How does this differ between current / past subscribers and followers who have never subscribed or trialed to the FT?
+
+```{r}
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+content_associate_total <- ds %>% 
+  select(content_associate) %>% 
+  mutate(content_associate = str_split(content_associate, ",")) %>% 
+  unnest(cols = c(content_associate)) %>% 
+  count(content_associate) %>% 
+  drop_na()
+
+hold_sub_total <- ds %>% 
+  select(hold_sub) %>% 
+  count(hold_sub) %>% 
+  drop_na()
+
+ds %>% 
+  drop_na(content_associate)
+
+
+ds %>% 
+  select(hold_sub, content_associate) %>% 
+  mutate(person = row_number(),
+         content_associate = str_split(content_associate, ",")) %>% 
+  unnest(cols = c(content_associate)) %>% 
+  group_by(content_associate, hold_sub) %>% 
+  summarise(n = n()) %>% 
+  drop_na() %>% 
+  group_by(content_associate) %>% 
+  left_join(hold_sub_total, by = "hold_sub") %>% 
+  mutate(prop = n.x / n.y) %>% 
+  ungroup() %>% 
+  filter(!content_associate == "Other (please specify)") %>% 
+  mutate(per_never = if_else(hold_sub == "Current subscriber", prop, 0),
+        alpha = if_else(content_associate %!in% c("Finance & Markets",
+                                                  "Entertainment") 
+                        & hold_sub == "Current subscriber",
+                        1, 0)) %>% 
+  {  ggplot(., aes(prop, reorder(content_associate, + per_never), 
+                   fill = factor(hold_sub, levels = c("Lapsed trialist",
+                                                    "Former subscriber",
+                                                    "Current subscriber",
+                                                    "Never subscribed")),
+                   alpha = alpha)) +
+      geom_col(position = position_dodge(0.9)) +
+      scale_x_continuous(labels = percent_format()) +
+      scale_fill_manual(values = cbPalette[2:5],
+                      breaks = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed"),
+                      labels = c("Lapsed trialist", "Former subscriber", "Current subscriber",
+                                  "Never subscribed")) +
+      scale_alpha(range = c(.3, 1)) +
+      guides(alpha = F, 
+             fill = guide_legend(reverse = T, label.position = "bottom")) +
+      labs(title = "Current subscribers associate us with a much broader range of content",
+           subtitle = "\nComparing content association by whether a follower has subcribed\n",
+           x = "\nPercentage of Followers",
+           y = "Content Association", 
+           fill = "Subscriber type") +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+    
+    }
+
+```
+
+#Which of the following content are you most interested in personally?
+
+```{r}
+
+ds %>% 
+  select(content_interested) %>% 
+  drop_na() %>% 
+  mutate(person = row_number(),
+         content_interested = str_split(content_interested, ",")) %>% 
+  unnest(cols = c(content_interested)) %>% 
+  count(content_interested) %>% 
+  left_join(content_associate_total, by = c("content_interested" = "content_associate")) %>% 
+  mutate(x.prop = n.x / 654, 
+         y.prop = n.y / 654,
+         content_interested = factor(content_interested),
+         is_high = if_else(x.prop >= .4, 1, 0)) %>% 
+  ggplot(aes(x = reorder(content_interested, + x.prop), y = x.prop)) + 
+  geom_segment(aes(x =reorder(content_interested, + x.prop), 
+                   xend = reorder(content_interested, + x.prop), 
+                   yend = x.prop, y = 0 )) +
+  geom_col(aes(y = y.prop), alpha = 0.2) +
+  geom_point(size = 4, aes(col = factor(is_high)), show.legend = F) +
+  scale_color_manual(values = c("#F0E442", "#009E73")) +
+  geom_text(aes(label = percent(x.prop, 1)), vjust = 1.5) +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  scale_x_discrete(expand = c(.1,.1)) +
+  labs(title = "\nFollower's interest is lower than their brand association\nin the top 4 content areas ",
+       subtitle = "\nWhich of the following content are you most interested in personally?\n(Select any that apply)\n",
+       y = "\nPercentage of Followers",
+       x = "Content Areas") +
+  theme_minimal()+
+      theme(
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 16),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(size = 24),
+        plot.subtitle = element_text(size = 16),
+        legend.position = "bottom") 
+    
+  
+
+
+ggsave("content_inter_ass_comp.png", plot = last_plot(), dpi = 400, width = 11, height = 7)
+```
+
+
 
 
 
